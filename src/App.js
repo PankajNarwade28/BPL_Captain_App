@@ -133,6 +133,7 @@ function App() {
     return () => {
       newSocket.close();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array - socket should only be created once
 
   const handleLogin = (e) => {
