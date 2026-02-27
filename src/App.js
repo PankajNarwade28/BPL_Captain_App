@@ -5,8 +5,14 @@ import './App.css';
 
 const SOCKET_URL = process.env.REACT_APP_SOCKET_URL;
 const API_URL = process.env.REACT_APP_API_URL;
-const PLACEHOLDER_IMAGE = `${SOCKET_URL}uploads/defaultPlayer.png`;
-const DEFAULT_TEAM_LOGO = `${SOCKET_URL}uploads/defaultTeam.png`;
+const MAX_SQUAD_SIZE = parseInt(process.env.REACT_APP_MAX_SQUAD_SIZE) || 11;
+
+// Ensure URLs end with a slash for proper path construction
+const normalizeUrl = (url) => url && (url.endsWith('/') ? url : url + '/');
+const BASE_URL = normalizeUrl(SOCKET_URL);
+
+const PLACEHOLDER_IMAGE = 'https://res.cloudinary.com/dz8q0fb8m/image/upload/v1772197979/defaultPlayer_kad3xb.png';
+const DEFAULT_TEAM_LOGO = 'https://res.cloudinary.com/dz8q0fb8m/image/upload/v1772197980/defaultTeam_x7thxe.png';
 function App() {
   const [socket, setSocket] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -20,6 +26,10 @@ function App() {
   const [bidSuccess, setBidSuccess] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showAllPlayers, setShowAllPlayers] = useState(false);
+  const [allPlayers, setAllPlayers] = useState([]);
+  const [loadingPlayers, setLoadingPlayers] = useState(false);
+  const [filterStatus, setFilterStatus] = useState('all'); // all, sold, unsold, remaining
 
   useEffect(() => {
     const newSocket = io(SOCKET_URL, {
@@ -118,6 +128,24 @@ function App() {
         return prev;
       });
       setCurrentPlayer(null);
+      
+      // Refresh all players list if it's being viewed
+      if (showAllPlayers) {
+        fetchAllPlayers();
+      }
+    });
+
+    newSocket.on('auction:reset', (data) => {
+      // Reset auction state
+      setCurrentPlayer(null);
+      setTimerValue(0);
+      
+      // Refresh all players list to show player back as UNSOLD
+      if (showAllPlayers) {
+        fetchAllPlayers();
+      }
+      
+      console.log('Auction reset:', data.message);
     });
 
     newSocket.on('bid:error', (data) => {
@@ -157,8 +185,16 @@ function App() {
     setCurrentPlayer(null);
   };
 
-  const handleBid = (increment = 5) => {
+  const handleBid = (increment = 10) => {
     if (!socket || !teamData || !currentPlayer) return;
+
+    // Check if team has reached max squad size
+    const currentRosterSize = teamData.players ? teamData.players.length : 0;
+    if (currentRosterSize >= MAX_SQUAD_SIZE) {
+      setError(`Squad full! Maximum ${MAX_SQUAD_SIZE} players allowed`);
+      setTimeout(() => setError(''), 3000);
+      return;
+    }
 
     const nextBid = currentBid.amount + increment;
 
@@ -171,9 +207,44 @@ function App() {
     socket.emit('bid:place', { amount: nextBid });
   };
 
+  const fetchAllPlayers = async () => {
+    setLoadingPlayers(true);
+    try {
+      const url = `${API_URL}/players`;
+      console.log('Fetching players from:', url);
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      console.log('Players API response:', data);
+      
+      if (data.success) {
+        console.log('Total players loaded:', data.players.length);
+        setAllPlayers(data.players);
+      } else {
+        console.error('API returned success: false', data);
+        setError(data.message || 'Failed to load players');
+        setTimeout(() => setError(''), 3000);
+      }
+    } catch (error) {
+      console.error('Error fetching players:', error);
+      setError('Failed to load players');
+      setTimeout(() => setError(''), 3000);
+    } finally {
+      setLoadingPlayers(false);
+    }
+  };
+
+  const handleViewAllPlayers = () => {
+    if (!showAllPlayers) {
+      fetchAllPlayers();
+    }
+    setShowAllPlayers(!showAllPlayers);
+  };
+
   const hasNoBids = currentBid.teamName === 'Base Price' || !currentBid.teamName || currentBid.teamName === 'No Bids Yet';
 
-  const getNextBidAmount = (increment = 5) => {
+  const getNextBidAmount = (increment = 10) => {
     // If no bids yet and increment is 0, return base price
     if (increment === 0 && hasNoBids) {
       return currentBid.amount;
@@ -181,8 +252,13 @@ function App() {
     return currentBid.amount + increment;
   };
 
-  const canBid = (increment = 5) => {
+  const canBid = (increment = 10) => {
     if (!teamData || !currentPlayer) return false;
+    
+    // Check if squad is full
+    const currentRosterSize = teamData.players ? teamData.players.length : 0;
+    if (currentRosterSize >= MAX_SQUAD_SIZE) return false;
+    
     const nextBid = getNextBidAmount(increment);
     return nextBid <= teamData.remainingPoints;
   };
@@ -285,7 +361,7 @@ function App() {
           <div className="team-info">
             <div className="team-badge">
               <img 
-                src={(teamData.logo && teamData.logo.trim() !== '') ? `${SOCKET_URL}${teamData.logo.replace(/^\//, '')}` : DEFAULT_TEAM_LOGO}
+                src={(teamData.logo && teamData.logo.trim() !== '') ? `${BASE_URL}${teamData.logo.replace(/^\//, '')}` : DEFAULT_TEAM_LOGO}
                 alt={teamData.teamName}
                 style={{
                   width: '100%',
@@ -318,11 +394,11 @@ function App() {
               <span className="budget-value">₹{teamData.remainingPoints}L</span>
             </div>
           </div>
-          <div className="budget-item">
-            <div className="budget-icon">👥</div>
+          <div className={`budget-item ${teamData.rosterSlotsFilled >= MAX_SQUAD_SIZE ? 'squad-full' : ''}`}>
+            <div className="budget-icon">{teamData.rosterSlotsFilled >= MAX_SQUAD_SIZE ? '🔒' : '👥'}</div>
             <div className="budget-details">
-              <span className="budget-label">Squad</span>
-              <span className="budget-value">{teamData.rosterSlotsFilled}/11</span>
+              <span className="budget-label">{teamData.rosterSlotsFilled >= MAX_SQUAD_SIZE ? 'Squad Full!' : 'Squad'}</span>
+              <span className="budget-value">{teamData.rosterSlotsFilled}/{MAX_SQUAD_SIZE}</span>
             </div>
           </div>
         </div>
@@ -331,12 +407,12 @@ function App() {
         <div className="progress-container">
           <div className="progress-header">
             <span className="progress-label">🏏 Squad Progress</span>
-            <span className="progress-percentage">{Math.round((teamData.rosterSlotsFilled / 11) * 100)}%</span>
+            <span className="progress-percentage">{Math.round((teamData.rosterSlotsFilled / MAX_SQUAD_SIZE) * 100)}%</span>
           </div>
           <div className="progress-bar">
             <div 
-              className="progress-fill"
-              style={{ width: `${(teamData.rosterSlotsFilled / 11) * 100}%` }}
+              className={`progress-fill ${teamData.rosterSlotsFilled >= MAX_SQUAD_SIZE ? 'progress-complete' : ''}`}
+              style={{ width: `${(teamData.rosterSlotsFilled / MAX_SQUAD_SIZE) * 100}%` }}
             >
               <span className="progress-shine"></span>
             </div>
@@ -357,9 +433,9 @@ function App() {
               <div className="player-photo-wrapper">
                 <img 
                   src={(currentPlayer.photo && currentPlayer.photo.trim() !== '' && !currentPlayer.photo.includes('placeholder'))
-                    ? (currentPlayer.photo.startsWith('http') 
-                        ? currentPlayer.photo 
-                        : `${SOCKET_URL}${currentPlayer.photo.replace(/^\/+/, '')}`)
+                    ? (currentPlayer.photo.startsWith('http')
+                        ? currentPlayer.photo
+                        : `${BASE_URL}${currentPlayer.photo.replace(/^\/+/, '')}`)
                     : PLACEHOLDER_IMAGE
                   } 
                   alt={currentPlayer.name}
@@ -430,39 +506,48 @@ function App() {
                         <span className="bid-button-label">{bidSuccess ? '' : 'Base Price'}</span>
                       </button>
                     )}
-                    {canBid(5) && (
-                      <button 
-                        className={`bid-button ${bidSuccess ? 'bid-success' : ''}`}
-                        onClick={() => handleBid(5)}
-                        disabled={!isConnected}
-                      >
-                        <span className="bid-button-icon">{bidSuccess ? '✓' : '💰'}</span>
-                        <span className="bid-button-text">
-                          {bidSuccess ? 'Bid Placed!' : `₹${getNextBidAmount(5)}L`}
-                        </span>
-                        <span className="bid-button-label">{bidSuccess ? '' : '+₹5L'}</span>
-                      </button>
-                    )}
                     {canBid(10) && (
                       <button 
                         className={`bid-button ${bidSuccess ? 'bid-success' : ''}`}
                         onClick={() => handleBid(10)}
                         disabled={!isConnected}
                       >
-                        <span className="bid-button-icon">{bidSuccess ? '✓' : '🚀'}</span>
+                        <span className="bid-button-icon">{bidSuccess ? '✓' : '💰'}</span>
                         <span className="bid-button-text">
                           {bidSuccess ? 'Bid Placed!' : `₹${getNextBidAmount(10)}L`}
                         </span>
                         <span className="bid-button-label">{bidSuccess ? '' : '+₹10L'}</span>
                       </button>
                     )}
+                    {canBid(20) && (
+                      <button 
+                        className={`bid-button ${bidSuccess ? 'bid-success' : ''}`}
+                        onClick={() => handleBid(20)}
+                        disabled={!isConnected}
+                      >
+                        <span className="bid-button-icon">{bidSuccess ? '✓' : '🚀'}</span>
+                        <span className="bid-button-text">
+                          {bidSuccess ? 'Bid Placed!' : `₹${getNextBidAmount(20)}L`}
+                        </span>
+                        <span className="bid-button-label">{bidSuccess ? '' : '+₹20L'}</span>
+                      </button>
+                    )}
                   </div>
-                  {!canBid(0) && !canBid(5) && !canBid(10) && (
+                  {!canBid(0) && !canBid(10) && !canBid(20) && (
                     <div className="cannot-bid">
                       <div className="notice-icon">⛔</div>
                       <div>
-                        <p className="notice-title">Insufficient Points</p>
-                        <small>You only have ₹{teamData.remainingPoints}L remaining</small>
+                        {teamData.players && teamData.players.length >= MAX_SQUAD_SIZE ? (
+                          <>
+                            <p className="notice-title">Squad Full!</p>
+                            <small>Maximum {MAX_SQUAD_SIZE} players reached. Cannot bid further.</small>
+                          </>
+                        ) : (
+                          <>
+                            <p className="notice-title">Insufficient Points</p>
+                            <small>You only have ₹{teamData.remainingPoints}L remaining</small>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
@@ -488,8 +573,160 @@ function App() {
           </div>
         )}
 
-        {/* My Squad */}
-        {teamData.players && teamData.players.length > 0 && (
+        {/* Tab Navigation */}
+        <div className="tabs-navigation">
+          <button 
+            className={`tab-button ${!showAllPlayers ? 'active' : ''}`}
+            onClick={() => setShowAllPlayers(false)}
+          >
+            <span>🏏</span> My Squad
+          </button>
+          <button 
+            className={`tab-button ${showAllPlayers ? 'active' : ''}`}
+            onClick={handleViewAllPlayers}
+          >
+            <span>📋</span> All Players
+          </button>
+        </div>
+
+        {/* All Players View */}
+        {showAllPlayers ? (
+          <div className="all-players-section">
+            {!loadingPlayers && allPlayers.length > 0 && (
+              <div className="players-summary">
+                <div className="summary-stat">
+                  <span className="stat-value">{allPlayers.length}</span>
+                  <span className="stat-label">Total</span>
+                </div>
+                <div className="summary-stat">
+                  <span className="stat-value">{allPlayers.filter(p => p.status === 'SOLD').length}</span>
+                  <span className="stat-label">Sold</span>
+                </div>
+                <div className="summary-stat">
+                  <span className="stat-value">{allPlayers.filter(p => p.status === 'UNSOLD').length}</span>
+                  <span className="stat-label">Available</span>
+                </div>
+                <div className="summary-stat">
+                  <span className="stat-value">{allPlayers.filter(p => p.status === 'IN_AUCTION').length}</span>
+                  <span className="stat-label">In Auction</span>
+                </div>
+              </div>
+            )}
+            
+            <div className="filter-buttons">
+              <button 
+                className={`filter-btn ${filterStatus === 'all' ? 'active' : ''}`}
+                onClick={() => setFilterStatus('all')}
+              >
+                All ({allPlayers.length})
+              </button>
+              <button 
+                className={`filter-btn ${filterStatus === 'sold' ? 'active' : ''}`}
+                onClick={() => setFilterStatus('sold')}
+              >
+                Sold ({allPlayers.filter(p => p.status === 'SOLD').length})
+              </button>
+              <button 
+                className={`filter-btn ${filterStatus === 'unsold' ? 'active' : ''}`}
+                onClick={() => setFilterStatus('unsold')}
+              >
+                Available ({allPlayers.filter(p => p.status === 'UNSOLD').length})
+              </button>
+              <button 
+                className={`filter-btn ${filterStatus === 'remaining' ? 'active' : ''}`}
+                onClick={() => setFilterStatus('remaining')}
+              >
+                In Auction ({allPlayers.filter(p => p.status === 'IN_AUCTION').length})
+              </button>
+            </div>
+
+            {loadingPlayers ? (
+              <div className="loading-players">
+                <div className="spinner"></div>
+                <p>Loading players...</p>
+              </div>
+            ) : allPlayers.length === 0 ? (
+              <div className="no-players">
+                <div className="no-players-icon">🏏</div>
+                <h3>No Players Found</h3>
+                <p>There are no players in the database yet.</p>
+                <p className="hint">Players will appear here once they are added by the admin.</p>
+              </div>
+            ) : (
+              <div className="players-list">
+                {allPlayers
+                  .filter(player => {
+                    if (filterStatus === 'all') return true;
+                    if (filterStatus === 'sold') return player.status === 'SOLD';
+                    if (filterStatus === 'unsold') return player.status === 'UNSOLD';
+                    if (filterStatus === 'remaining') return player.status === 'IN_AUCTION';
+                    return true;
+                  })
+                  .map((player) => (
+                    <div key={player._id} className={`player-list-item status-${player.status ? player.status.toLowerCase() : 'unknown'}`}>
+                      <div className="player-list-info">
+                        <div className="player-list-photo">
+                          <img 
+                            src={(player.photo && player.photo.trim() !== '' && !player.photo.includes('placeholder'))
+                              ? (player.photo.startsWith('http')
+                                  ? player.photo
+                                  : `${BASE_URL}${player.photo.replace(/^\/+/, '')}`)
+                              : PLACEHOLDER_IMAGE
+                            }
+                            alt={player.name}
+                            onError={(e) => { 
+                              e.target.onerror = null;
+                              e.target.src = PLACEHOLDER_IMAGE; 
+                            }}
+                          />
+                        </div>
+                        <div className="player-list-details">
+                          <h4>{player.name}</h4>
+                          <span className="player-list-category">{player.category}</span>
+                        </div>
+                      </div>
+                      <div className="player-list-status">
+                        {player.status === 'SOLD' && (
+                          <>
+                            <span className="status-badge sold">Sold</span>
+                            <span className="sold-price">₹{player.soldPrice}L</span>
+                            {player.soldTo && (
+                              <span className="sold-team">{player.soldTo.teamName || player.soldTo}</span>
+                            )}
+                          </>
+                        )}
+                        {player.status === 'UNSOLD' && (
+                          <>
+                            <span className="status-badge unsold">Unsold</span>
+                            <span className="base-price">Base: ₹{player.basePrice}L</span>
+                          </>
+                        )}
+                        {player.status === 'IN_AUCTION' && (
+                          <>
+                            <span className="status-badge remaining">In Auction</span>
+                            <span className="base-price">Base: ₹{player.basePrice}L</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                {allPlayers.filter(player => {
+                  if (filterStatus === 'all') return true;
+                  if (filterStatus === 'sold') return player.status === 'SOLD';
+                  if (filterStatus === 'unsold') return player.status === 'UNSOLD';
+                  if (filterStatus === 'remaining') return player.status === 'IN_AUCTION';
+                  return true;
+                }).length === 0 && (
+                  <div className="no-players">
+                    <p>No players found in this category</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* My Squad */
+          teamData.players && teamData.players.length > 0 && (
           <div className="my-squad">
             <div className="squad-header">
               <div>
@@ -507,6 +744,21 @@ function App() {
             <div className="squad-list">
               {teamData.players.map((player) => (
                 <div key={player._id || player.name} className="squad-player">
+                  <div className="squad-player-photo">
+                    <img 
+                      src={(player.photo && player.photo.trim() !== '' && !player.photo.includes('placeholder'))
+                        ? (player.photo.startsWith('http')
+                            ? player.photo
+                            : `${BASE_URL}${player.photo.replace(/^\/+/, '')}`)
+                        : PLACEHOLDER_IMAGE
+                      }
+                      alt={player.name}
+                      onError={(e) => { 
+                        e.target.onerror = null;
+                        e.target.src = PLACEHOLDER_IMAGE; 
+                      }}
+                    />
+                  </div>
                   <div className="squad-player-info">
                     <span className="squad-player-name">{player.name}</span>
                     <span className="squad-player-category">{player.category}</span>
@@ -526,6 +778,7 @@ function App() {
               </div>
             </div>
           </div>
+          )
         )}
       </div>
     </div>
