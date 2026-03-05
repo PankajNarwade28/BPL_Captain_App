@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 import LoadingAnimation from './LoadingAnimation';
 import './App.css';
@@ -13,6 +13,43 @@ const BASE_URL = normalizeUrl(SOCKET_URL);
 
 const PLACEHOLDER_IMAGE = 'https://res.cloudinary.com/dz8q0fb8m/image/upload/v1772197979/defaultPlayer_kad3xb.png';
 const DEFAULT_TEAM_LOGO = 'https://res.cloudinary.com/dz8q0fb8m/image/upload/v1772197980/defaultTeam_x7thxe.png';
+
+const buildImgUrl = (path, base, placeholder) => {
+  if (!path || path.trim() === '') return placeholder;
+
+  // If it's a Cloudinary URL, return as-is
+  if (path.startsWith('http')) return path;
+
+  // Normalize base URL to ensure it has protocol and trailing slash
+  let normalizedBase = base;
+  if (!normalizedBase.startsWith('http')) {
+    normalizedBase = 'http://localhost:5000/';
+  }
+  normalizedBase = normalizedBase.endsWith('/')
+    ? normalizedBase
+    : normalizedBase + '/';
+
+  // Clean the path - remove leading slashes
+  const cleanPath = path.replace(/^\/+/, '');
+
+  // Construct the full URL
+  return `${normalizedBase}${cleanPath}`;
+};
+
+// Helper function to get optimized player photo
+const getOptimizedPlayerPhoto = (photoUrl) => {
+  if (!photoUrl) return PLACEHOLDER_IMAGE;
+  if (photoUrl.startsWith('http')) return photoUrl;
+  return buildImgUrl(photoUrl, BASE_URL, PLACEHOLDER_IMAGE);
+};
+
+// Helper function to get optimized team logo
+const getOptimizedTeamLogo = (logoUrl) => {
+  if (!logoUrl) return DEFAULT_TEAM_LOGO;
+  if (logoUrl.startsWith('http')) return logoUrl;
+  return buildImgUrl(logoUrl, BASE_URL, DEFAULT_TEAM_LOGO);
+};
+
 function App() {
   const [socket, setSocket] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -30,6 +67,10 @@ function App() {
   const [allPlayers, setAllPlayers] = useState([]);
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all'); // all, sold, unsold, remaining
+  const [showSoldAnimation, setShowSoldAnimation] = useState(false);
+  const [soldInfo, setSoldInfo] = useState(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const soldAnimationTimeout = useRef(null);
 
   useEffect(() => {
     const newSocket = io(SOCKET_URL, {
@@ -42,43 +83,91 @@ function App() {
     // Connection events
     newSocket.on('connect', () => {
       setIsConnected(true);
+      console.log('🔌 Captain app connected to server');
+      console.log('Socket ID:', newSocket.id);
     });
 
     newSocket.on('disconnect', () => {
       setIsConnected(false);
+      console.log('Captain app disconnected from server');
     });
 
-    // Check for saved credentials on mount
-    const savedTeamId = localStorage.getItem('captain_teamId');
-    const savedPin = localStorage.getItem('captain_pin');
-    
-    if (savedTeamId && savedPin) {
-      setTeamId(savedTeamId);
-      setPin(savedPin);
-      // Auto-login with saved credentials
-      newSocket.emit('team:login', { teamId: savedTeamId, pin: savedPin });
-    }
+    newSocket.on('reconnect', () => {
+      console.log('Captain app reconnected to server');
+    });
+
+    // ========================================
+    // SET UP ALL LISTENERS FIRST (before auto-login)
+    // ========================================
 
     // Auth events
     newSocket.on('auth:success', (data) => {
+      console.log('🔓 auth:success event received');
+      console.log('Team data:', data.team);
       if (data.team) {
+        console.log('✅ Auth successful, team:', data.team.teamName);
         setIsAuthenticated(true);
         setTeamData(data.team);
         setError('');
         setIsLoading(false);
+        setIsInitializing(false);
+        console.log('⏳ Waiting for auction:state event after successful auth...');
       }
     });
 
     newSocket.on('auth:error', (data) => {
       setError(data.message);
       setIsLoading(false);
+      setIsInitializing(false);
       // Clear invalid credentials
       localStorage.removeItem('captain_teamId');
       localStorage.removeItem('captain_pin');
     });
 
     // Auction events
+    // Listen for current auction state (same logic as big-screen for robustness)
+    newSocket.on('auction:state', (data) => {
+      console.log('📡 Captain app received auction:state event');
+      console.log('📦 Full data:', JSON.stringify(data, null, 2));
+      
+      if (!data) {
+        console.log('⚠️ auction:state data is null/undefined');
+        return;
+      }
+      
+      if (!data.state) {
+        console.log('⚠️ No state property in auction:state data');
+        console.log('Data keys:', Object.keys(data));
+        return;
+      }
+      
+      console.log('Auction state properties:', {
+        isActive: data.state.isActive,
+        isPaused: data.state.isPaused,
+        hasCurrentPlayer: !!data.state.currentPlayer,
+        currentPlayerName: data.state.currentPlayer?.name,
+        timerValue: data.timerValue
+      });
+      
+      // If there's a current player, show it (same as big-screen)
+      if (data.state.currentPlayer) {
+        console.log('✅ Setting current player from auction:state:', data.state.currentPlayer.name);
+        setCurrentPlayer(data.state.currentPlayer);
+        setCurrentBid({
+          amount: data.state.currentHighBid?.amount || data.state.currentPlayer.basePrice,
+          teamName: data.state.currentHighBid?.team?.teamName || 'No Bids Yet'
+        });
+        setTimerValue(data.timerValue || 20);
+        console.log('✅ Current player state updated successfully');
+      } else {
+        console.log('❌ No current player in auction state (state.currentPlayer is null/undefined)');
+        setCurrentPlayer(null);
+        setTimerValue(0);
+      }
+    });
+
     newSocket.on('auction:started', (data) => {
+      console.log('Auction started:', data);
       setCurrentPlayer(data.player);
       setCurrentBid({ amount: data.basePrice, teamName: 'Base Price' });
       setTimerValue(data.timerValue);
@@ -115,6 +204,31 @@ function App() {
     });
 
     newSocket.on('player:sold', (data) => {
+      console.log('🎯 Player sold event:', data);
+      
+      // Clear any existing sold animation
+      if (soldAnimationTimeout.current) {
+        clearTimeout(soldAnimationTimeout.current);
+      }
+      
+      // Show sold animation
+      setSoldInfo({
+        player: data.player,
+        team: data.team,
+        amount: data.amount,
+        isMyTeam: teamData && data.team && data.team.id && data.team.id.toString() === teamData.id.toString()
+      });
+      setShowSoldAnimation(true);
+      
+      // Hide animation after 5 seconds
+      const timeout = setTimeout(() => {
+        setShowSoldAnimation(false);
+        setSoldInfo(null);
+        soldAnimationTimeout.current = null;
+      }, 5000);
+      soldAnimationTimeout.current = timeout;
+      
+      // Update team data if this team won the player
       setTeamData(prev => {
         if (prev && data.team && data.team.id && 
             data.team.id.toString() === prev.id.toString()) {
@@ -127,6 +241,7 @@ function App() {
         }
         return prev;
       });
+      
       setCurrentPlayer(null);
       
       // Refresh all players list if it's being viewed
@@ -136,16 +251,23 @@ function App() {
     });
 
     newSocket.on('auction:reset', (data) => {
+      console.log('Auction reset:', data.message);
       // Reset auction state
       setCurrentPlayer(null);
       setTimerValue(0);
+      setCurrentBid({ amount: 5, teamName: '' });
       
       // Refresh all players list to show player back as UNSOLD
       if (showAllPlayers) {
         fetchAllPlayers();
       }
-      
-      console.log('Auction reset:', data.message);
+    });
+
+    // Listen for auction ended event
+    newSocket.on('auction:ended', (data) => {
+      console.log('Auction ended:', data);
+      setCurrentPlayer(null);
+      setTimerValue(0);
     });
 
     newSocket.on('bid:error', (data) => {
@@ -158,7 +280,40 @@ function App() {
       setTimeout(() => setBidSuccess(false), 2000);
     });
 
+    // ========================================
+    // AUTO-LOGIN (after all listeners are set up)
+    // ========================================
+    console.log('✅ All socket listeners registered');
+    
+    // Check for saved credentials and auto-login
+    const savedTeamId = localStorage.getItem('captain_teamId');
+    const savedPin = localStorage.getItem('captain_pin');
+    
+    if (savedTeamId && savedPin) {
+      setTeamId(savedTeamId);
+      setPin(savedPin);
+      console.log('🔐 Auto-login with saved credentials for team:', savedTeamId);
+      // Use setTimeout to ensure listeners are fully registered
+      setTimeout(() => {
+        console.log('📤 Emitting team:login event');
+        newSocket.emit('team:login', { teamId: savedTeamId, pin: savedPin });
+      }, 100);
+      
+      // Set timeout to stop initializing if auth takes too long (fallback)
+      setTimeout(() => {
+        console.log('⏱️ Auto-login timeout check');
+        setIsInitializing(false);
+      }, 3000);
+    } else {
+      console.log('ℹ️ No saved credentials found, waiting for manual login');
+      // No saved credentials, stop initializing and show login
+      setTimeout(() => setIsInitializing(false), 500);
+    }
+
     return () => {
+      if (soldAnimationTimeout.current) {
+        clearTimeout(soldAnimationTimeout.current);
+      }
       newSocket.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -265,6 +420,11 @@ function App() {
 
   const isHighestBidder = currentBid.teamName === teamData?.teamName;
 
+  // Show loading animation while initializing
+  if (isInitializing) {
+    return <LoadingAnimation message="Checking authentication..." />;
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="app">
@@ -348,6 +508,49 @@ function App() {
 
   return (
     <div className="app">
+      {/* Sold/Unsold Animation Overlay */}
+      {showSoldAnimation && soldInfo && (
+        <div className={`sold-animation-overlay ${soldInfo.isMyTeam ? 'my-team' : soldInfo.team ? 'other-team' : 'unsold'}`}>
+          <div className="sold-animation-content">
+            <h1 className="sold-animation-title">
+              {soldInfo.isMyTeam ? '🎉 YOU WON!' : soldInfo.team ? 'SOLD' : '❌ UNSOLD'}
+            </h1>
+            
+            <div className="sold-player-card">
+              <img 
+                src={getOptimizedPlayerPhoto(soldInfo.player.photo)}
+                alt={soldInfo.player.name}
+                className="sold-player-photo"
+                onError={(e) => { 
+                  e.target.onerror = null;
+                  e.target.src = PLACEHOLDER_IMAGE; 
+                }}
+              />
+              <h2 className="sold-player-name">{soldInfo.player.name}</h2>
+              
+              {soldInfo.team && (
+                <div className="sold-team-info">
+                  <img 
+                    src={getOptimizedTeamLogo(soldInfo.team.logo)}
+                    alt={soldInfo.team.teamName}
+                    className="sold-team-logo"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = DEFAULT_TEAM_LOGO;
+                    }}
+                  />
+                  <span className="sold-team-name">{soldInfo.team.teamName}</span>
+                </div>
+              )}
+              
+              <div className="sold-amount">
+                <span className="sold-animation-price">₹{soldInfo.amount}L</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="captain-dashboard">
         {/* Connection Status Badge */}
         {!isConnected && (
@@ -361,7 +564,7 @@ function App() {
           <div className="team-info">
             <div className="team-badge">
               <img 
-                src={(teamData.logo && teamData.logo.trim() !== '') ? `${BASE_URL}${teamData.logo.replace(/^\//, '')}` : DEFAULT_TEAM_LOGO}
+                src={getOptimizedTeamLogo(teamData.logo)}
                 alt={teamData.teamName}
                 style={{
                   width: '100%',
@@ -432,12 +635,7 @@ function App() {
             <div className="player-card-mobile">
               <div className="player-photo-wrapper">
                 <img 
-                  src={(currentPlayer.photo && currentPlayer.photo.trim() !== '' && !currentPlayer.photo.includes('placeholder'))
-                    ? (currentPlayer.photo.startsWith('http')
-                        ? currentPlayer.photo
-                        : `${BASE_URL}${currentPlayer.photo.replace(/^\/+/, '')}`)
-                    : PLACEHOLDER_IMAGE
-                  } 
+                  src={getOptimizedPlayerPhoto(currentPlayer.photo)}
                   alt={currentPlayer.name}
                   className="player-photo-mobile"
                   onError={(e) => { 
@@ -667,12 +865,7 @@ function App() {
                       <div className="player-list-info">
                         <div className="player-list-photo">
                           <img 
-                            src={(player.photo && player.photo.trim() !== '' && !player.photo.includes('placeholder'))
-                              ? (player.photo.startsWith('http')
-                                  ? player.photo
-                                  : `${BASE_URL}${player.photo.replace(/^\/+/, '')}`)
-                              : PLACEHOLDER_IMAGE
-                            }
+                            src={getOptimizedPlayerPhoto(player.photo)}
                             alt={player.name}
                             onError={(e) => { 
                               e.target.onerror = null;
@@ -746,12 +939,7 @@ function App() {
                 <div key={player._id || player.name} className="squad-player">
                   <div className="squad-player-photo">
                     <img 
-                      src={(player.photo && player.photo.trim() !== '' && !player.photo.includes('placeholder'))
-                        ? (player.photo.startsWith('http')
-                            ? player.photo
-                            : `${BASE_URL}${player.photo.replace(/^\/+/, '')}`)
-                        : PLACEHOLDER_IMAGE
-                      }
+                      src={getOptimizedPlayerPhoto(player.photo)}
                       alt={player.name}
                       onError={(e) => { 
                         e.target.onerror = null;
