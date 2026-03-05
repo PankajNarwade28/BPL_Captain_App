@@ -4,186 +4,165 @@ const LoadingAnimation = ({ message = "Loading..." }) => {
   return (
     <div style={{
       position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.75)',
-      backdropFilter: 'blur(12px)',
+      inset: 0,
+      backgroundColor: '#020617', // Deeper slate for better contrast
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 9999,
-      animation: 'fadeIn 0.3s ease-in-out'
+      overflow: 'hidden',
+      fontFamily: 'Inter, system-ui, sans-serif'
     }}>
-      <div style={{ position: 'relative' }}>
-        {/* Main Loading Container */}
+      {/* Background Ambient "Stadium" Lights */}
+      <div className="stadium-light" style={{ left: '10%', top: '10%', background: '#6366f1' }}></div>
+      <div className="stadium-light" style={{ right: '10%', bottom: '10%', background: '#a855f7' }}></div>
+
+      <div style={{ position: 'relative', width: '90%', maxWidth: '400px' }}>
+        
+        {/* Main Card */}
         <div style={{
-          backgroundColor: 'white',
-          borderRadius: '24px',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-          padding: '48px',
+          background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%)',
+          backdropFilter: 'blur(20px)',
+          borderRadius: '40px',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          padding: '48px 32px',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: '32px',
-          animation: 'slideUp 0.4s ease-out'
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
+          textAlign: 'center'
         }}>
-          {/* Cricket Animation - GIF Loop */}
-          <div style={{ position: 'relative' }}>
+          
+          {/* Animated Visual Container */}
+          <div style={{ position: 'relative', marginBottom: '40px' }}>
+            {/* Pulsing Outer Ring */}
+            <div className="pulse-ring"></div>
+            
+            {/* Image/GIF Frame */}
             <div style={{
-              width: '192px',
-              height: '192px',
-              borderRadius: '16px',
+              width: '140px',
+              height: '140px',
+              borderRadius: '50%', // Circle looks more "premium" for avatars/logos
               overflow: 'hidden',
-              background: 'linear-gradient(to bottom right, #DBEAFE, #E9D5FF)',
-              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+              border: '4px solid #6366f1',
+              boxShadow: '0 0 30px rgba(99, 102, 241, 0.4)',
+              background: '#000',
+              position: 'relative',
+              zIndex: 2
             }}>
               <img
                 src="/assets/Untitled file.gif"
-                alt="Cricket Animation"
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover'
-                }}
+                alt="Cricket"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
             </div>
-            
-            {/* Pulsing Ring */}
-            <div style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              borderRadius: '16px',
-              border: '4px solid #3B82F6',
-              animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-            }}></div>
           </div>
 
-          {/* Loading Text */}
-          <div style={{ textAlign: 'center' }}>
+          {/* Text Content */}
+          <div style={{ width: '100%' }}>
             <h3 style={{
-              fontSize: '28px',
-              fontWeight: 'bold',
-              background: 'linear-gradient(to right, #3B82F6, #9333EA)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-              marginBottom: '16px'
+              fontSize: '20px',
+              fontWeight: '800',
+              color: '#fff',
+              letterSpacing: '3px',
+              textTransform: 'uppercase',
+              margin: '0 0 16px 0',
             }}>
               {message}
             </h3>
             
-            {/* Animated Dots */}
+            {/* Enhanced Loading Bar */}
             <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              marginBottom: '24px'
+              width: '180px',
+              height: '6px',
+              backgroundColor: 'rgba(255,255,255,0.05)',
+              borderRadius: '20px',
+              margin: '0 auto 24px',
+              overflow: 'hidden',
+              position: 'relative',
+              border: '1px solid rgba(255,255,255,0.1)'
             }}>
-              <div style={{
-                width: '12px',
-                height: '12px',
-                backgroundColor: '#3B82F6',
-                borderRadius: '50%',
-                animation: 'bounce 1s infinite'
-              }}></div>
-              <div style={{
-                width: '12px',
-                height: '12px',
-                backgroundColor: '#9333EA',
-                borderRadius: '50%',
-                animation: 'bounce 1s infinite 0.15s'
-              }}></div>
-              <div style={{
-                width: '12px',
-                height: '12px',
-                backgroundColor: '#EC4899',
-                borderRadius: '50%',
-                animation: 'bounce 1s infinite 0.3s'
-              }}></div>
+              <div className="progress-bar-fill"></div>
             </div>
             
-            {/* Progress Message */}
             <p style={{
-              color: '#6B7280',
-              fontSize: '14px',
-              fontWeight: '500'
+              color: '#64748b',
+              fontSize: '11px',
+              fontWeight: '700',
+              letterSpacing: '1.5px',
+              margin: '0',
+              opacity: 0.9
             }}>
-              Please wait while we process your request
+              INITIALIZING AUCTION ENGINE
             </p>
-          </div>
-
-          {/* Cricket Bat Icon */}
-          <div style={{
-            position: 'absolute',
-            bottom: '-16px',
-            right: '-16px',
-            fontSize: '64px',
-            opacity: 0.2,
-            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-          }}>
-            🏏
           </div>
         </div>
 
-        {/* Outer Glow */}
+        {/* Subtle Branding Footer */}
         <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'linear-gradient(to right, rgba(59, 130, 246, 0.2), rgba(147, 51, 234, 0.2))',
-          borderRadius: '24px',
-          filter: 'blur(40px)',
-          zIndex: -1,
-          animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-        }}></div>
+          marginTop: '24px',
+          textAlign: 'center',
+          animation: 'fadeIn 1s ease-in'
+        }}>
+          <span style={{ 
+            color: 'rgba(255,255,255,0.3)', 
+            fontSize: '10px', 
+            fontWeight: '500', 
+            letterSpacing: '1px' 
+          }}>
+            DEVELOPED BY 
+            <span style={{ color: '#6366f1', marginLeft: '5px' }}>PANKAJ NARWADE PATIL</span>
+          </span>
+        </div>
       </div>
 
       <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+        .stadium-light {
+          position: absolute;
+          width: 40vw;
+          height: 40vw;
+          filter: blur(120px);
+          opacity: 0.15;
+          border-radius: 50%;
+          pointer-events: none;
+          animation: pulse 6s infinite alternate;
         }
-        
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
+
+        .pulse-ring {
+          position: absolute;
+          inset: -15px;
+          border-radius: 50%;
+          border: 2px solid #6366f1;
+          opacity: 0;
+          animation: ripple 2s infinite;
         }
-        
+
+        .progress-bar-fill {
+          position: absolute;
+          height: 100%;
+          width: 40%;
+          background: linear-gradient(90deg, #6366f1, #a855f7);
+          border-radius: 20px;
+          box-shadow: 0 0 10px #6366f1;
+          animation: slide 1.5s infinite ease-in-out;
+        }
+
+        @keyframes slide {
+          0% { left: -40%; width: 20%; }
+          50% { width: 50%; }
+          100% { left: 100%; width: 20%; }
+        }
+
+        @keyframes ripple {
+          0% { transform: scale(0.8); opacity: 0.5; }
+          100% { transform: scale(1.3); opacity: 0; }
+        }
+
         @keyframes pulse {
-          0%, 100% {
-            opacity: 1;
-          }
-          50% {
-            opacity: 0.5;
-          }
-        }
-        
-        @keyframes bounce {
-          0%, 100% {
-            transform: translateY(0);
-          }
-          50% {
-            transform: translateY(-10px);
-          }
+          0% { opacity: 0.1; transform: scale(1); }
+          100% { opacity: 0.2; transform: scale(1.1); }
         }
       `}</style>
     </div>
