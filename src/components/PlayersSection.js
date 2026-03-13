@@ -31,10 +31,11 @@ function PlayersSection({
   getOptimizedPlayerPhoto,
   placeholderImage
 }) {
-  const soldPlayers = allPlayers.filter((player) => player.status === 'SOLD');
-  const unsoldPlayers = allPlayers.filter((player) => player.status === 'UNSOLD');
-  const inAuctionPlayers = allPlayers.filter((player) => player.status === 'IN_AUCTION');
-  const filteredPlayers = filterPlayersByStatus(allPlayers, filterStatus);
+  const availablePlayers = allPlayers.filter((player) => player.availability !== 'UNAVAILABLE');
+  const soldPlayers = availablePlayers.filter((player) => player.status === 'SOLD');
+  const unsoldPlayers = availablePlayers.filter((player) => player.status === 'UNSOLD');
+  const inAuctionPlayers = availablePlayers.filter((player) => player.status === 'IN_AUCTION');
+  const filteredPlayers = filterPlayersByStatus(availablePlayers, filterStatus);
   const teamPlayers = teamData.players || [];
 
   return (
@@ -50,9 +51,9 @@ function PlayersSection({
 
       {showAllPlayers ? (
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          {!loadingPlayers && allPlayers.length > 0 && (
+          {!loadingPlayers && availablePlayers.length > 0 && (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center"><p className="text-xl font-bold text-slate-900">{allPlayers.length}</p><p className="text-xs text-slate-500">Total</p></div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center"><p className="text-xl font-bold text-slate-900">{availablePlayers.length}</p><p className="text-xs text-slate-500">Total</p></div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center"><p className="text-xl font-bold text-emerald-700">{soldPlayers.length}</p><p className="text-xs text-slate-500">Sold</p></div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center"><p className="text-xl font-bold text-cyan-700">{unsoldPlayers.length}</p><p className="text-xs text-slate-500">Available</p></div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center"><p className="text-xl font-bold text-amber-700">{inAuctionPlayers.length}</p><p className="text-xs text-slate-500">In Auction</p></div>
@@ -61,7 +62,7 @@ function PlayersSection({
 
           <div className="flex flex-wrap gap-2">
             {[
-              { key: FILTER_KEYS.all, label: `All (${allPlayers.length})` },
+              { key: FILTER_KEYS.all, label: `All (${availablePlayers.length})` },
               { key: FILTER_KEYS.sold, label: `Sold (${soldPlayers.length})` },
               { key: FILTER_KEYS.unsold, label: `Available (${unsoldPlayers.length})` },
               { key: FILTER_KEYS.remaining, label: `In Auction (${inAuctionPlayers.length})` }
@@ -84,14 +85,14 @@ function PlayersSection({
             </div>
           )}
 
-          {!loadingPlayers && allPlayers.length === 0 && (
+          {!loadingPlayers && availablePlayers.length === 0 && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-center text-slate-700">
               <p className="text-base font-medium">No Players Found</p>
               <p className="mt-1 text-sm text-slate-500">Players will appear here once added by admin.</p>
             </div>
           )}
 
-          {!loadingPlayers && allPlayers.length > 0 && (
+          {!loadingPlayers && availablePlayers.length > 0 && (
             <div className="space-y-2">
               {filteredPlayers.map((player) => (
                 <div key={player._id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
