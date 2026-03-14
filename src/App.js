@@ -370,7 +370,7 @@ function App() {
   const fetchAllPlayers = async () => {
     setLoadingPlayers(true);
     try {
-      const url = `${API_URL}/players`;
+      const url = `${API_URL}/players/auction-available`;
       console.log('Fetching players from:', url);
       
       const response = await fetch(url);
